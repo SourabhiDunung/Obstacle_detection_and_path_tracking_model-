@@ -1,0 +1,97 @@
+// code for ESP32 on server-side
+
+#include <SPI.h>
+#include <RF24.h>
+
+RF24 radio(5, 15); // CE, CSN pins
+
+// Address for communication
+const uint64_t pipeAddress = 0xF0F0F0F0E1LL;
+
+const int calibrationDistance = 1; // Calibration distance in meters
+const int calibrationRSSI = -50;    // RSSI value at calibration distance
+
+void setup() {
+  Serial.begin(9600);
+  radio.begin();
+  radio.setPALevel(RF24_PA_LOW);
+  radio.openReadingPipe(1, pipeAddress);
+  radio.startListening();
+}
+
+void loop() {
+  if (radio.available()) {
+    String payload;
+    radio.read(&payload, sizeof(payload));
+
+    // Extract cargo position from payload
+    float cargoPositionX = extractCargoPosition(payload, 'X');
+    float cargoPositionY = extractCargoPosition(payload, 'Y');
+
+    // Display cargo position
+    Serial.print("Cargo Position: X=");
+    Serial.print(cargoPositionX);
+    Serial.print(", Y=");
+    Serial.print(cargoPositionY);
+
+    // Calculate RSSI manually
+    int rssi = calculateRSSI();
+
+    // Display RSSI value
+    Serial.print(" RSSI: ");
+    Serial.print(rssi);
+
+    // Estimate distance based on signal strength and calibration data
+    float estimatedDistance = estimateDistance(rssi, calibrationRSSI, calibrationDistance);
+
+    // Display estimated distance
+    Serial.print(" Estimated Distance: ");
+    Serial.print(estimatedDistance);
+    Serial.println(" meters");
+
+    // Send data to GUI
+    sendData(estimatedDistance);
+  }
+  delay(1000);
+}
+
+// Function to extract cargo position from payload
+float extractCargoPosition(String payload, char axis) {
+  int index = payload.indexOf(axis);
+  if (index != -1) {
+    int commaIndex = payload.indexOf(',', index);
+    String valueString = payload.substring(index + 2, commaIndex); // Extract value after ':'
+    return valueString.toFloat();
+  }
+  return 0; // Default value if axis not found
+}
+
+// Function to calculate RSSI manually
+int calculateRSSI() {
+  // Measure signal strength (Voltage) using a voltage divider
+  // Convert measured voltage to RSSI value (approximately linear relationship)
+  // This is just a placeholder, you may need to calibrate based on your setup
+  float voltage = analogRead(A0) * (5.0 / 1023.0);
+  int rssi = map(voltage, 0, 5, -100, 0); // Assuming 0V corresponds to -100dBm and 5V corresponds to 0dBm
+  return rssi;
+}
+
+// Function to estimate distance based on signal strength and calibration data
+float estimateDistance(int rssi, int calRSSI, int calDistance) {
+  // Calculate signal attenuation factor
+  float attenuation = calDistance / pow(10, (rssi - calRSSI) / 20.0);
+  // Estimate distance based on attenuation factor
+  return calDistance * attenuation;
+}
+
+// Function to send data to GUI
+void sendData(float distance) {
+  // Convert float distance to a string
+  String distanceString = String(distance, 2);
+
+  // Send data to the receiver
+  radio.stopListening(); // Make sure to stop listening before transmitting
+  radio.openWritingPipe(pipeAddress);
+  radio.write(distanceString.c_str(), distanceString.length() + 1); // Include null terminator
+  radio.startListening(); // Resume listening after transmission
+}
