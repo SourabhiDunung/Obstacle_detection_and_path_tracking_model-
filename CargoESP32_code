@@ -1,0 +1,146 @@
+//Code for ESP32 on Cargo 
+
+#include <SPI.h>
+#include <RF24.h>
+
+#define CE_PIN   25   // GPIO pin for CE on NRF24L01P-T
+#define CSN_PIN  26   // GPIO pin for CSN on NRF24L01P-T
+
+#define TRIGGER_PIN_1  4 // GPIO pin connected to trigger pin of ultrasonic sensor 1
+#define ECHO_PIN_1     5 // GPIO pin connected to echo pin of ultrasonic sensor 1
+
+#define TRIGGER_PIN_2  6 // GPIO pin connected to trigger pin of ultrasonic sensor 2
+#define ECHO_PIN_2     7 // GPIO pin connected to echo pin of ultrasonic sensor 2
+
+#define LEFT_IR_PIN    8 // GPIO pin connected to IR sensor 1
+#define RIGHT_IR_PIN   9 // GPIO pin connected to IR sensor 2
+
+#define LEFT_WHEEL_FORWARD_PIN 10 // GPIO pin for left wheel forward
+#define LEFT_WHEEL_BACKWARD_PIN 11 // GPIO pin for left wheel backward
+#define RIGHT_WHEEL_FORWARD_PIN 12 // GPIO pin for right wheel forward
+#define RIGHT_WHEEL_BACKWARD_PIN 13 // GPIO pin for right wheel backward
+
+RF24 radio(CE_PIN, CSN_PIN); // Create a radio object
+
+void setup() {
+  Serial.begin(9600);
+
+  // Initialize SPI communication
+  SPI.begin();
+
+  // Initialize the radio communication
+  radio.begin();
+  radio.setPALevel(RF24_PA_LOW); // Set power level
+  radio.setDataRate(RF24_250KBPS); // Set data rate
+  radio.openWritingPipe(0xF0F0F0F0E1LL); // Set the address for the communication pipe
+
+  pinMode(TRIGGER_PIN_1, OUTPUT);
+  pinMode(ECHO_PIN_1, INPUT);
+  pinMode(TRIGGER_PIN_2, OUTPUT);
+  pinMode(ECHO_PIN_2, INPUT);
+  pinMode(LEFT_IR_PIN, INPUT);
+  pinMode(RIGHT_IR_PIN, INPUT);
+  pinMode(LEFT_WHEEL_FORWARD_PIN, OUTPUT);
+  pinMode(LEFT_WHEEL_BACKWARD_PIN, OUTPUT);
+  pinMode(RIGHT_WHEEL_FORWARD_PIN, OUTPUT);
+  pinMode(RIGHT_WHEEL_BACKWARD_PIN, OUTPUT);
+}
+
+void loop() {
+  long duration1, distance1, duration2, distance2;
+
+  // Trigger ultrasonic sensor 1
+  digitalWrite(TRIGGER_PIN_1, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIGGER_PIN_1, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIGGER_PIN_1, LOW);
+  duration1 = pulseIn(ECHO_PIN_1, HIGH);
+  distance1 = duration1 * 0.034 / 2;
+
+  // Trigger ultrasonic sensor 2
+  digitalWrite(TRIGGER_PIN_2, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIGGER_PIN_2, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIGGER_PIN_2, LOW);
+  duration2 = pulseIn(ECHO_PIN_2, HIGH);
+  distance2 = duration2 * 0.034 / 2;
+
+  // Read IR sensor values
+  int leftIRValue = digitalRead(LEFT_IR_PIN);
+  int rightIRValue = digitalRead(RIGHT_IR_PIN);
+
+  // Start transmission
+  radio.stopListening();
+  if (radio.write(&distance1, sizeof(distance1)) && radio.write(&distance2, sizeof(distance2))) {
+    Serial.print("Distance 1 sent successfully: ");
+    Serial.print(distance1);
+    Serial.println(" cm");
+    Serial.print("Distance 2 sent successfully: ");
+    Serial.print(distance2);
+    Serial.println(" cm");
+  } else {
+    Serial.println("Distance send failed :(");
+  }
+
+  // Control car movement based on sensor readings
+  if (distance1 < 20) { // Object detected at front
+    moveBackward(); // Move back
+  } else if (distance2 < 20) { // Object detected at back
+    moveForward(); // Move forward
+  } else if (leftIRValue == LOW) { // Object detected at left
+    moveRight(); // Move right
+  } else if (rightIRValue == LOW) { // Object detected at right
+    moveLeft(); // Move left
+  } else {
+    // No obstacle detected, stop or continue straight
+    stop();
+  }
+
+  delay(1000); // Delay before sending the next distances
+}
+
+long measureDistance(int triggerPin, int echoPin) {
+  digitalWrite(triggerPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(triggerPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(triggerPin, LOW);
+  return pulseIn(echoPin, HIGH) * 0.034 / 2;
+}
+
+void moveForward() {
+  digitalWrite(LEFT_WHEEL_FORWARD_PIN, HIGH);
+  digitalWrite(LEFT_WHEEL_BACKWARD_PIN, LOW);
+  digitalWrite(RIGHT_WHEEL_FORWARD_PIN, HIGH);
+  digitalWrite(RIGHT_WHEEL_BACKWARD_PIN, LOW);
+}
+
+void moveBackward() {
+  digitalWrite(LEFT_WHEEL_FORWARD_PIN, LOW);
+  digitalWrite(LEFT_WHEEL_BACKWARD_PIN, HIGH);
+  digitalWrite(RIGHT_WHEEL_FORWARD_PIN, LOW);
+  digitalWrite(RIGHT_WHEEL_BACKWARD_PIN, HIGH);
+}
+
+void moveLeft() {
+  digitalWrite(LEFT_WHEEL_FORWARD_PIN, LOW);
+  digitalWrite(LEFT_WHEEL_BACKWARD_PIN, HIGH);
+  digitalWrite(RIGHT_WHEEL_FORWARD_PIN, HIGH);
+  digitalWrite(RIGHT_WHEEL_BACKWARD_PIN, LOW);
+}
+
+void moveRight() {
+  digitalWrite(LEFT_WHEEL_FORWARD_PIN, HIGH);
+  digitalWrite(LEFT_WHEEL_BACKWARD_PIN, LOW);
+  digitalWrite(RIGHT_WHEEL_FORWARD_PIN, LOW);
+  digitalWrite(RIGHT_WHEEL_BACKWARD_PIN, HIGH);
+}
+
+void stop() {
+  digitalWrite(LEFT_WHEEL_FORWARD_PIN, LOW);
+  digitalWrite(LEFT_WHEEL_BACKWARD_PIN, LOW);
+  digitalWrite(RIGHT_WHEEL_FORWARD_PIN, LOW);
+  digitalWrite(RIGHT_WHEEL_BACKWARD_PIN, LOW);
+}
