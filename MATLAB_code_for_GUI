@@ -1,0 +1,60 @@
+If you're receiving data from Arduino IDE serially and you want to plot it in MATLAB GUI, you need to modify the MATLAB code accordingly to read the data from the Arduino IDE and plot it.
+
+Here's a general outline of how you can do it:
+
+1. **Arduino Code:** Ensure that your Arduino code is sending the data you want to plot serially. For example, if you're sending distance data, Arduino should print the distance values serially.
+
+2. **MATLAB Code:**
+   - Open MATLAB and create a new script file or open your existing MATLAB script or App Designer project.
+   - Use the `serialport` function to initialize communication with the serial port where Arduino is connected.
+   - Read data from the serial port using `read` or `readline` function.
+   - Parse the received data and plot it using MATLAB plotting functions like `plot`, `scatter`, etc.
+   - Update the plot in real-time as new data arrives.
+
+Here's an example MATLAB code:
+
+```matlab
+% Initialize serial port for communication with Arduino
+s = serialport('COM5', 9600); % Replace 'COM5' with the appropriate port name
+configureTerminator(s, "LF"); % Set line feed as terminator
+
+% Create a figure for plotting
+figure;
+hold on;
+xlabel('Time');
+ylabel('Distance');
+
+% Initialize arrays for storing data
+time = [];
+distance = [];
+
+% Main loop to continuously read and plot data
+while ishandle(gcf)
+    % Read data from serial port
+    data = readline(s);
+    
+    % Parse data (assuming data format: "time,distance")
+    parts = strsplit(data, ',');
+    time(end+1) = str2double(parts{1}); % assuming time is first
+    distance(end+1) = str2double(parts{2}); % assuming distance is second
+    
+    % Plot data
+    plot(time, distance, 'b.-');
+    title('Real-time Distance Plot');
+    drawnow; % Update plot
+    
+    % Optional: Limit number of data points plotted for efficiency
+    if numel(time) > 1000
+        time(1) = [];
+        distance(1) = [];
+    end
+end
+
+% Close serial port when GUI is closed
+fclose(s);
+delete(s);
+```
+
+Make sure to replace `'COM5'` with the correct COM port where your Arduino is connected. Also, ensure that the data sent from Arduino IDE follows a format that MATLAB can parse correctly.
+
+This code continuously plots the data received from Arduino in real-time. You can customize the plot appearance and behavior as per your requirements.
